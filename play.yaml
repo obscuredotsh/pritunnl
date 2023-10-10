@@ -1,0 +1,101 @@
+---
+- name: Configure Pritunl and MongoDB
+  hosts: localhost
+  become: yes  # Run tasks with sudo
+
+  tasks:
+
+    - name: Import Pritunl signing key
+      apt_key:
+        url: 'https://raw.githubusercontent.com/pritunl/pgp/master/pritunl_repo_pub.asc'
+        state: present
+
+    - name: Add Pritunl repository
+      apt_repository:
+        repo: 'deb http://repo.pritunl.com/stable/apt jammy main'
+        state: present
+#      when: ansible_distribution_release == "jammy"  # Ensure it's the correct Ubuntu release
+
+    - name: Import Pritunl signing key
+      apt_key:
+        url: 'https://raw.githubusercontent.com/pritunl/pgp/master/pritunl_repo_pub.asc'
+        state: present
+
+    - name: Import MongoDB signing key
+      apt_key:
+        url: 'https://www.mongodb.org/static/pgp/server-6.0.asc'
+        state: present
+    
+    - name: Add MongoDB repository
+      apt_repository:
+        repo: 'deb https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/6.0 multiverse'
+        state: present
+      when: ansible_distribution_release == "jammy"
+
+    - name: Update package cache
+      apt:
+        update_cache: yes
+
+    # - name: Upgrade all packages
+    #   apt:
+    #     upgrade: dist
+    #     autoclean: yes
+    #     autoremove: yes
+
+    - name: Install WireGuard and WireGuard tools
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - wireguard
+        - wireguard-tools
+
+    - name: Disable UFW firewall
+      command: ufw disable
+      ignore_errors: yes  # UFW may not be installed, so ignore errors
+
+    - name: Install Pritunl and MongoDB packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - pritunl
+        - mongodb-org
+
+    - name: Enable and start Mongod and Pritunl services
+      systemd:
+        name: "{{ item }}"
+        enabled: yes
+        state: started
+      loop:
+        - mongod
+        - pritunl
+
+    - name: store mongoDB setup key
+      shell: sudo pritunl setup-key
+      register: _mongo_setup_key   
+
+    - name: Set mongo_setup_key
+      set_fact:
+        mongo_setup_key: "{{ _mongo_setup_key.stdout }}"        
+
+    - name: Enable and start Mongod and Pritunl services
+      template:
+        src: ./pritunl.conf.j2
+        dest: /etc/pritunl.conf
+
+    - name: web setup pass
+      shell: sudo pritunl default-password | grep "password" | awk '{print $2}' | tail -n1
+      register: _web_setup_pass
+
+    - name: Set web_setup_pass
+      set_fact:
+        web_setup_pass: "{{ _web_setup_pass.stdout }}"  
+
+    - name: Print web_setup_pass URI
+      debug:
+        var: web_setup_pass        
+
+    - name: Print mongo_setup_key
+      debug:
+        var: mongo_setup_key
