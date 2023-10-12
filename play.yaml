@@ -1,6 +1,6 @@
 ---
 - name: Configure Pritunl and MongoDB
-  hosts: localhost
+  hosts: pritunnel-vpn
   become: yes  # Run tasks with sudo
 
   tasks:
